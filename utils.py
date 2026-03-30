@@ -20,25 +20,39 @@ def summarize(results: dict) -> dict:
     return out
 
 
+def avg_curve(runs: list[dict]) -> list[float]:
+    if not runs:
+        return []
+
+    rounds = len(runs[0]["health"])
+    ys = [0.0] * rounds
+
+    for run in runs:
+        for i in range(rounds):
+            ys[i] += run["health"][i]
+
+    n = len(runs)
+    for i in range(rounds):
+        ys[i] /= n
+
+    return ys
+
+
+def total_llm_cost(results: dict) -> float:
+    s = 0.0
+    for run in results.get("llm", []):
+        s += run.get("cost_usd", 0.0)
+    return s
+
+
 def plot_results(results: dict) -> None:
     plt.figure(figsize=(10, 5))
 
     for key in results:
-        n = len(results[key])
-        if n == 0:
+        ys = avg_curve(results[key])
+        if not ys:
             continue
-
-        rounds = len(results[key][0]["health"])
-        avg_health = [0.0] * rounds
-
-        for run in results[key]:
-            for i in range(rounds):
-                avg_health[i] += run["health"][i]
-
-        for i in range(rounds):
-            avg_health[i] /= n
-
-        plt.plot(avg_health, label=key)
+        plt.plot(ys, label=key)
 
     plt.xlabel("Round")
     plt.ylabel("Field health")

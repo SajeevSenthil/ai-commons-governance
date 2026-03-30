@@ -5,19 +5,19 @@ import argparse
 from environment import CommonsSim
 from experiments import run_all
 from policies import LLMPolicy, RuleBasedPolicy
-from utils import avg_last_50, plot_results, summarize
+from utils import avg_last_50, plot_results, summarize, total_llm_cost
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--rounds", type=int, default=150, help="Number of rounds to simulate.")
     parser.add_argument("--seed", type=int, default=7, help="Random seed for agent greed and noise.")
-    parser.add_argument("--policy", type=str, default="rule", choices=["rule", "llm", "both"])
+    parser.add_argument("--policy", type=str, default="both", choices=["rule", "llm", "both"])
     parser.add_argument(
         "--model",
         type=str,
-        default="gemini-2.5-flash",
-        help="Gemini model name used by the LLM policymaker.",
+        default="gpt-4o-mini",
+        help="OpenAI model name used by the LLM policymaker.",
     )
     args = parser.parse_args()
 
@@ -27,6 +27,9 @@ def main() -> None:
         print("Average field health over last 50 rounds")
         print("rule:", stats["rule"])
         print("llm :", stats["llm"])
+        print("rule mean:", round(sum(stats["rule"]) / len(stats["rule"]), 4))
+        print("llm mean :", round(sum(stats["llm"]) / len(stats["llm"]), 4))
+        print("total llm api cost (usd):", round(total_llm_cost(results), 6))
         plot_results(results)
         return
 

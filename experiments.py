@@ -4,7 +4,7 @@ from environment import CommonsSim
 from policies import LLMPolicy, RuleBasedPolicy
 
 
-def run_one(policy_name: str, seed: int, rounds: int = 150, model: str = "gemini-2.5-flash") -> dict:
+def run_one(policy_name: str, seed: int, rounds: int = 150, model: str = "gpt-4o-mini") -> dict:
     sim = CommonsSim(seed=seed)
     sim.reset()
     if policy_name == "rule":
@@ -29,14 +29,19 @@ def run_one(policy_name: str, seed: int, rounds: int = 150, model: str = "gemini
         reward.append(obs["avg_reward"])
         taxes.append(tax)
 
-    return {
+    out = {
         "health": health,
         "reward": reward,
         "tax": taxes,
     }
+    if policy_name == "llm":
+        out["prompt_tokens"] = policy.prompt_tokens
+        out["output_tokens"] = policy.output_tokens
+        out["cost_usd"] = policy.total_cost_usd
+    return out
 
 
-def run_all(rounds: int = 150, seeds: list[int] | None = None, model: str = "gemini-2.5-flash") -> dict:
+def run_all(rounds: int = 150, seeds: list[int] | None = None, model: str = "gpt-4o-mini") -> dict:
     if seeds is None:
         seeds = [0, 1, 2, 3, 4]
 

@@ -3,7 +3,15 @@
 import os
 import re
 
-from google import genai
+from openai import OpenAI
+
+
+PRICE = {
+    "gpt-4o-mini": {
+        "input_per_million": 0.15,
+        "output_per_million": 0.60,
+    }
+}
 
 
 def clamp(x: float) -> float:
@@ -51,14 +59,17 @@ class RuleBasedPolicy:
 
 
 class LLMPolicy:
-    def __init__(self, api_key: str | None = None, model: str = "gemini-2.5-flash") -> None:
-        key = api_key or os.getenv("GOOGLE_API_KEY")
+    def __init__(self, api_key: str | None = None, model: str = "gpt-4o-mini") -> None:
+        key = api_key or os.getenv("OPENAI_API_KEY")
         if not key:
-            raise RuntimeError("GOOGLE_API_KEY is not set.")
+            raise RuntimeError("OPENAI_API_KEY is not set.")
 
-        self.client = genai.Client(api_key=key)
+        self.client = OpenAI(api_key=key)
         self.model = model
         self.history = []
+        self.prompt_tokens = 0
+        self.output_tokens = 0
+        self.total_cost_usd = 0.0
 
     def build_prompt(self, obs: dict) -> str:
         lines = [
@@ -99,17 +110,39 @@ class LLMPolicy:
 
     def act(self, obs: dict) -> float:
         prompt = self.build_prompt(obs)
-        response = self.client.models.generate_content(
+        response = self.client.responses.create(
             model=self.model,
-            contents=prompt,
+            input=prompt,
         )
-        text = (response.text or "").strip()
+        self.add_usage(response)
+        text = (response.output_text or "").strip()
         m = re.search(r"\d*\.?\d+", text)
         if m:
             tax = float(m.group())
         else:
             tax = 0.5
         return clamp(tax)
+
+    def add_usage(self, response) -> None:
+        meta = getattr(response, "usage", None)
+        if not meta:
+            return
+
+        in_tokens = getattr(meta, "input_tokens", 0) or 0
+        out_tokens = getattr(meta, "output_tokens", 0) or 0
+
+        self.prompt_tokens += int(in_tokens)
+        self.output_tokens += int(out_tokens)
+        self.total_cost_usd = self.estimate_cost()
+
+    def estimate_cost(self) -> float:
+        if self.model not in PRICE:
+            return 0.0
+
+        p = PRICE[self.model]
+        in_cost = (self.prompt_tokens / 1_000_000.0) * p["input_per_million"]
+        out_cost = (self.output_tokens / 1_000_000.0) * p["output_per_million"]
+        return in_cost + out_cost
 
     def update(self, tax: float, obs: dict) -> None:
         self.history.append(
