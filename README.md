@@ -1,6 +1,6 @@
 # ai-commons-governance
 
-A simplified agent-based commons simulation with an LLM policymaker built on Google ADK.
+A simplified agent-based commons simulation comparing a rule-based policymaker and an LLM-based policymaker.
 
 ## What is implemented
 
@@ -9,13 +9,12 @@ A simplified agent-based commons simulation with an LLM policymaker built on Goo
 - Reward and redistribution exactly based on the tax equations
 - Field update using `a * (1 - avg_harvest) - b * (avg_harvest^2)`
 - Collapse penalty when field health drops below `0.3`
-- A Google ADK policymaker that observes only aggregate state and recent history
-- A CLI entry point for running seeded simulations
-
-## What is intentionally deferred
-
-- Rule-based policymaker logic
-- Plotting and batch experiment comparison
+- A rule-based tax policy
+- An LLM-based policy using direct OpenAI API calls
+- Comparison across 150 rounds and 5 seeds
+- Plotting of field health over time
+- Final-50-round health reporting
+- LLM API cost logging
 
 ## Setup
 
@@ -26,27 +25,75 @@ A simplified agent-based commons simulation with an LLM policymaker built on Goo
 pip install -r requirements.txt
 ```
 
-3. Set your Gemini API key:
+3. Set your OpenAI API key:
 
 ```bash
-set GOOGLE_API_KEY=your_api_key_here
+export OPENAI_API_KEY=your_api_key_here
 ```
 
 On PowerShell, use:
 
 ```powershell
-$env:GOOGLE_API_KEY="your_api_key_here"
+$env:OPENAI_API_KEY="your_api_key_here"
 ```
 
 ## Run
 
 ```bash
-python main.py --rounds 30 --seed 7 --model gemini-2.0-flash
+python main.py
 ```
 
-## Notes
+By default this runs both policies for `150` rounds across `5` seeds, prints the comparison report, and shows the plot.
 
-- The policymaker receives current field health, previous average harvest rate, previous average reward, and a short history window.
-- Round data is stored as simple table-like dictionaries so it is easy to inspect and extend.
-- The LLM is instructed to return JSON with a single tax rate.
-- If you want, the next step can be adding a rule-based baseline and a comparison script.
+## Result 1
+
+### Observed outcome
+
+- Field health declines over time for both policies
+- The LLM-based policy collapses faster, around 30-40 rounds
+- The rule-based policy performs slightly better and delays collapse
+- Neither policy maintains long-term sustainability under the current environment settings
+
+![Figure 1](Figure_1.png)
+
+### Why this happens
+
+1. Environmental dynamics are harsh.
+
+   With `a = 0.1` and `b = 0.2`, the damage term often dominates recovery. Even moderate harvesting gradually degrades the field, so the system is unstable unless taxation becomes strong early.
+
+2. Feedback is delayed.
+
+   Field damage accumulates over time. By the time field health becomes visibly bad, the system has already lost a lot of recoverable capacity.
+
+3. The LLM policy is reactive.
+
+   It only sees recent history, does not learn across runs, and does not explicitly optimize long-term control. That makes it more likely to keep taxes too low in the early rounds and respond too late.
+
+4. The rule-based policy has built-in safeguards.
+
+   Threshold-based logic acts like a conservative controller. It raises tax more aggressively when health falls, so it slows collapse better than the LLM.
+
+5. Collapse creates a negative loop.
+
+   Once `field_health < 0.3`, rewards are halved. That pushes the system into a low-reward regime where recovery becomes much harder.
+
+### Key insight
+
+`Policy -> Incentives -> Agent behavior -> System outcome`
+
+The policymaker never controls field health directly. It only changes incentives, and the long-run outcome emerges from agent decisions.
+
+### Interpretation
+
+- Heuristic policies can outperform LLMs in dynamic control tasks
+- Early intervention matters a lot in commons problems
+- Short-term reasoning is not enough for long-term sustainability
+
+### Possible improvements
+
+- Increase regeneration `a`
+- Reduce damage `b`
+- Add stronger collapse warnings to the LLM prompt
+- Include trend information such as change in field health
+- Use a hybrid policy with hard rule-based safety constraints and LLM flexibility
