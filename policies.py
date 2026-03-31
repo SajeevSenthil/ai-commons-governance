@@ -85,6 +85,8 @@ class LLMPolicy:
         self.client = OpenAI(api_key=key)
         self.model = model
         self.history = []
+        self.prev_tax = 0.7
+        self.prev_h = None
         self.prompt_tokens = 0
         self.output_tokens = 0
         self.total_cost_usd = 0.0
@@ -129,51 +131,54 @@ class LLMPolicy:
 
     def build_prompt(self, obs: dict) -> str:
         sig = self.get_signals(obs)
+        history_lines = []
+
+        if len(self.history) == 0:
+            history_lines.append("No previous rounds.")
+        else:
+            for i, row in enumerate(self.history, start=1):
+                history_lines.append(
+                    f"Round {i}: tax={row['tax']:.2f}, health={row['health']:.2f}, reward={row['reward']:.2f}"
+                )
 
         lines = [
-            "You are a policymaker managing a shared resource (apple field).",
+            "You are a policymaker controlling a shared resource.",
             "",
-            "Your goal is to maintain high field health over time while ensuring agents continue participating.",
+            "Goal:",
+            "Maintain field health between 0.7 and 0.9 over long time horizons.",
+            "",
+            "Important:",
+            "- Early overharvesting causes irreversible damage",
+            "- High tax early prevents collapse",
+            "- If field health drops below 0.3, recovery is extremely difficult",
+            "- Stability is more important than short-term rewards",
             "",
             "Current State:",
             f"Field health: {obs['field_health']:.2f}",
             f"Average harvest: {obs['avg_harvest']:.2f}",
             f"Average reward: {obs['avg_reward']:.2f}",
             "",
-            "Trend Signals:",
-            f"- Field health change: {sig['delta_health']:.2f} ({sig['trend_direction']})",
-            f"- Harvest pressure: {sig['harvest_signal']}",
-            f"- Reward level: {sig['reward_signal']}",
-            f"- System risk: {sig['risk_signal']}",
+            "Trend:",
+            f"Health change: {sig['delta_health']:.2f}",
             "",
             "Recent History:",
         ]
-
-        if len(self.history) == 0:
-            lines.append("No previous rounds.")
-        else:
-            for i, row in enumerate(self.history, start=1):
-                lines.append(
-                    f"Round {i}: tax={row['tax']:.2f}, health={row['health']:.2f}, reward={row['reward']:.2f}"
-                )
+        lines += history_lines
 
         lines += [
             "",
-            "Important rules:",
-            "- If field health drops below 0.3, rewards are halved.",
-            "- High harvesting damages the field.",
-            "- High tax reduces harvesting but may reduce rewards.",
-            "- Early intervention is critical to avoid collapse.",
+            "Guidelines:",
+            "- Keep tax high when health is high (prevent overuse)",
+            "- Increase tax immediately if health is decreasing",
+            "- Avoid low tax in early rounds",
             "",
-            "Step 1: Briefly analyze the situation (1 line).",
-            "Step 2: Choose the next tax rate.",
-            "",
-            "Return ONLY the final number between 0 and 1.",
+            "Return ONLY a number between 0 and 1.",
         ]
 
         return "\n".join(lines)
 
     def act(self, obs: dict) -> float:
+        h = obs["field_health"]
         prompt = self.build_prompt(obs)
         response = self.client.responses.create(
             model=self.model,
@@ -183,10 +188,29 @@ class LLMPolicy:
         text = (response.output_text or "").strip()
         m = re.search(r"\d*\.?\d+", text)
         if m:
-            tax = float(m.group())
+            llm_tax = float(m.group())
         else:
-            tax = 0.5
-        return clamp(tax)
+            llm_tax = 0.5
+
+        tax = 0.7 * llm_tax + 0.3 * self.prev_tax
+        tax = max(tax, 0.65)
+
+        if self.prev_h is not None:
+            delta_h = h - self.prev_h
+            if delta_h < -0.02:
+                tax += 0.1
+
+        if h > 0.85:
+            tax = max(tax, 0.7)
+        elif h < 0.3:
+            tax = max(tax, 0.9)
+        elif h < 0.5:
+            tax = max(tax, 0.8)
+
+        tax = clamp(tax)
+        self.prev_tax = tax
+        self.prev_h = h
+        return tax
 
     def add_usage(self, response) -> None:
         meta = getattr(response, "usage", None)
