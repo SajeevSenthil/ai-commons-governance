@@ -60,12 +60,6 @@ By default this runs both policies for `150` rounds across `5` seeds, prints the
 
 1. Environmental dynamics are harsh.
 
-   The environment updates field health using:
-
-   `delta_H = a * (1 - avg_harvest) - b * (avg_harvest ** 2)`
-
-   `H(t+1) = clip(H(t) + delta_H, 0, 1)`
-
    With `a = 0.1` and `b = 0.2`, the damage term often dominates recovery. Even moderate harvesting gradually degrades the field, so the system is unstable unless taxation becomes strong early.
 
 2. Feedback is delayed.
@@ -74,15 +68,7 @@ By default this runs both policies for `150` rounds across `5` seeds, prints the
 
 3. The LLM policy is reactive.
 
-   The LLM only observes:
-
-   `field_health`
-
-   `avg_harvest`
-
-   `avg_reward`
-
-   plus the last 5 rounds of history. It does not learn across runs and does not explicitly optimize long-term control. That makes it more likely to keep taxes too low in the early rounds and respond too late.
+   The LLM only observes aggregate signals and short recent history. It does not learn across runs and does not explicitly optimize long-term control. That makes it more likely to keep taxes too low in the early rounds and respond too late.
 
 4. The rule-based policy has built-in safeguards.
 
@@ -90,53 +76,7 @@ By default this runs both policies for `150` rounds across `5` seeds, prints the
 
 5. Collapse creates a negative loop.
 
-   Rewards are computed as:
-
-   `reward = harvest * (1 - tax) + redistribution`
-
-   `redistribution = total_tax / n_agents`
-
-   and if:
-
-   `field_health < 0.3`
-
-   then:
-
-   `reward = reward / 2`
-
-   That pushes the system into a low-reward regime where recovery becomes much harder.
-
-### Equations used in this project
-
-Agent decision:
-
-`R_low = low * (1 - tax)`
-
-`R_high = high * (1 - tax)`
-
-`score_low = R_low`
-
-`score_high = R_high * (1 + greed)`
-
-`P(high) = exp(score_high) / (exp(score_low) + exp(score_high))`
-
-Reward:
-
-`reward = harvest * (1 - tax) + redistribution`
-
-`redistribution = total_tax / n_agents`
-
-Collapse:
-
-`if field_health < 0.3: reward = reward / 2`
-
-Field health:
-
-`avg_harvest = mean(harvests)`
-
-`delta_H = a * (1 - avg_harvest) - b * (avg_harvest ** 2)`
-
-`H(t+1) = clip(H(t) + delta_H, 0, 1)`
+   Once the field enters the collapse region, rewards are halved. That pushes the system into a low-reward regime where recovery becomes much harder.
 
 ### Key insight
 
@@ -157,3 +97,15 @@ The policymaker never controls field health directly. It only changes incentives
 - Add stronger collapse warnings to the LLM prompt
 - Include trend information such as change in field health
 - Use a hybrid policy with hard rule-based safety constraints and LLM flexibility
+
+## Result 2: Passing Structured Reasoning Signals
+
+Figure 2 illustrates the evolution of field health over 150 rounds for both rule-based and LLM-based policymakers, where the objective is to maintain sustainability of a shared resource. We observe that both approaches eventually lead to system collapse, but the LLM-based policy degrades significantly faster, around 30 rounds, compared to the rule-based policy, which delays collapse until approximately 60-70 rounds. Quantitatively, the average field health over the final 50 rounds is `0.0234` for the rule-based policy and only `0.001` for the LLM, indicating near-total failure of the LLM approach.
+
+This behavior is primarily due to the underlying environment dynamics, where field health evolves as `delta_H = a(1 - avg_harvest) - b(avg_harvest^2)` with stronger quadratic damage and weak regeneration, making early overharvesting highly detrimental. Additionally, once field health drops below `0.3`, rewards are halved, creating a collapse regime from which recovery is extremely difficult.
+
+The LLM policymaker fails because it operates reactively based on short-term observations and limited history, lacking long-term planning and the ability to anticipate delayed consequences. It tends to apply low taxes in early rounds when the system appears healthy, allowing irreversible damage to accumulate. In contrast, the rule-based policy encodes explicit control logic and safety constraints, enforcing higher taxes when degradation begins and thereby slowing collapse.
+
+Even with prompt refinements and added trend signals, the LLM does not exhibit true learning or optimization over time, highlighting that reasoning alone is insufficient for control in dynamic multi-agent systems with delayed feedback. This result demonstrates that structured, preventive policies outperform reactive LLM-based approaches in such environments and suggests that learning-based methods such as gradient-based or reinforcement learning approaches would be required to achieve stable long-term outcomes.
+
+![Figure 2](Figure_2.png)
