@@ -10,7 +10,7 @@ from agent import HIGH, LOW
 class CommonsSim:
     """Simple commons simulator."""
 
-    def __init__(self, n_agents: int = 10, seed: int = 42, a: float = 0.1, b: float = 0.2):
+    def __init__(self, n_agents: int = 10, seed: int = 42, a: float = 0.2, b: float = 0.2):
         self.n_agents = n_agents
         self.seed = seed
         self.rng = np.random.default_rng(seed)
@@ -58,9 +58,13 @@ class CommonsSim:
             r_high = self.high * (1.0 - tax)
 
             score_low = r_low
-            score_high = r_high * (1.0 + g)
+            score_high = r_high * (1.0 + 0.3 * g)
 
-            p_high = self.softmax(score_high, score_low)
+            temp = 0.6
+            e_high = np.exp(score_high / temp)
+            e_low = np.exp(score_low / temp)
+            p_high = float(e_high / (e_high + e_low))
+            p_high = min(p_high, 0.8)
 
             if self.rng.random() < p_high:
                 h = self.high
@@ -77,10 +81,11 @@ class CommonsSim:
 
         collapsed = h0 < self.cut
         if collapsed:
-            rewards = rewards * 0.5
+            penalty = 0.5 + 0.5 * h0
+            rewards = rewards * penalty
 
         avg_harvest = float(np.mean(harvests))
-        delta_h = self.a * (1.0 - avg_harvest) - self.b * (avg_harvest ** 2)
+        delta_h = self.a * (1.0 - avg_harvest) * self.field_health - self.b * avg_harvest
         self.field_health += delta_h
         self.field_health = float(np.clip(self.field_health, 0.0, 1.0))
 

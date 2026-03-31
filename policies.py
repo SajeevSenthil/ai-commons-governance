@@ -24,28 +24,46 @@ def clamp(x: float) -> float:
 
 class RuleBasedPolicy:
     def __init__(self) -> None:
+        self.base = 0.7
+        self.k1 = 2.5
+        self.k2 = 1.2
+        self.k3 = 0.2
+        self.H_target = 0.7
+        self.h_target = 0.5
+        self.r_target = 0.5
+        self.prev_h = None
+        self.prev_tax = 0.7
         self.history = []
 
     def act(self, obs: dict) -> float:
         h = obs["field_health"]
-        avg_h = obs["avg_harvest"]
-        avg_r = obs["avg_reward"]
+        harvest = obs["avg_harvest"]
+        reward = obs["avg_reward"]
 
-        if h < 0.3:
-            tax = 0.9
-        elif h < 0.5:
-            tax = 0.7
-        elif h < 0.7:
-            tax = 0.5
-        else:
-            tax = 0.2
+        tax = (
+            self.base
+            + self.k1 * (self.H_target - h)
+            + self.k2 * (harvest - self.h_target)
+            - self.k3 * (reward - self.r_target)
+        )
 
-        if avg_h > 0.65:
-            tax += 0.1
-        if avg_r < 0.35:
-            tax -= 0.1
+        if self.prev_h is not None:
+            delta_h = h - self.prev_h
+            tax += -1.0 * delta_h
 
-        return clamp(tax)
+        self.prev_h = h
+
+        if h > 0.85:
+            tax = max(tax, 0.7)
+        elif h > 0.7:
+            tax = max(tax, 0.65)
+        elif h > 0.55:
+            tax = max(tax, 0.75)
+
+        tax = 0.7 * tax + 0.3 * self.prev_tax
+        tax = max(0.05, min(1.0, tax))
+        self.prev_tax = tax
+        return tax
 
     def update(self, tax: float, obs: dict) -> None:
         self.history.append(

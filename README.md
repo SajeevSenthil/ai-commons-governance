@@ -109,3 +109,108 @@ The LLM policymaker fails because it operates reactively based on short-term obs
 Even with prompt refinements and added trend signals, the LLM does not exhibit true learning or optimization over time, highlighting that reasoning alone is insufficient for control in dynamic multi-agent systems with delayed feedback. This result demonstrates that structured, preventive policies outperform reactive LLM-based approaches in such environments and suggests that learning-based methods such as gradient-based or reinforcement learning approaches would be required to achieve stable long-term outcomes.
 
 ![Figure 2](Figure_2.png)
+
+## Result 3: Stabilized Control Policy with Softer Agent Response
+
+Figure 3 shows the behavior after jointly refining the environment, the control policy, and the agent response. In this setting, the system no longer collapses over the 50-round sanity check. Instead, field health stays in a high and stable range, roughly between `0.93` and `1.0`, showing that stabilization is possible when incentives and agent behavior are co-designed rather than tuned independently.
+
+This result is important because it shows that policy alone was not enough. Earlier versions of the controller still failed because agents remained too aggressive in choosing high harvest. After reducing that aggressiveness and smoothing the controller response, the field became controllable.
+
+### Environment equations used
+
+Field health update:
+
+`avg_harvest = mean(harvests)`
+
+`delta_H = a * (1 - avg_harvest) * H - b * avg_harvest`
+
+`H(t+1) = clip(H(t) + delta_H, 0, 1)`
+
+Reward:
+
+`reward = harvest * (1 - tax) + redistribution`
+
+`redistribution = total_tax / n_agents`
+
+Smooth collapse penalty:
+
+If `H < 0.3`, then:
+
+`penalty = 0.5 + 0.5 * H`
+
+`reward = reward * penalty`
+
+### Environment parameters used
+
+- `a = 0.2`
+- `b = 0.2`
+- collapse threshold = `0.3`
+
+### Agent-response equations used
+
+Harvest levels:
+
+- `LOW = 0.2`
+- `HIGH = 0.65`
+
+Reward scores:
+
+`R_low = low * (1 - tax)`
+
+`R_high = high * (1 - tax)`
+
+`score_low = R_low`
+
+`score_high = R_high * (1 + 0.3 * greed)`
+
+Softmax-style response:
+
+`temp = 0.6`
+
+`p_high = exp(score_high / temp) / (exp(score_high / temp) + exp(score_low / temp))`
+
+`p_high = min(p_high, 0.8)`
+
+### Control policy used
+
+The final control policy was a continuous controller with smoothing:
+
+`tax = base + k1 * (H_target - H) + k2 * (avg_harvest - h_target) - k3 * (avg_reward - r_target)`
+
+Trend correction:
+
+`tax = tax - 1.0 * delta_H_obs`
+
+where:
+
+`delta_H_obs = H_t - H_{t-1}`
+
+Preventive bias:
+
+- if `H > 0.85`, enforce `tax >= 0.7`
+- if `H > 0.7`, enforce `tax >= 0.65`
+- if `H > 0.55`, enforce `tax >= 0.75`
+
+Tax smoothing:
+
+`tax = 0.7 * tax + 0.3 * prev_tax`
+
+Clamp:
+
+`tax in [0.05, 1.0]`
+
+### Control-policy parameters used
+
+- `base = 0.7`
+- `k1 = 2.5`
+- `k2 = 1.2`
+- `k3 = 0.2`
+- `H_target = 0.7`
+- `h_target = 0.5`
+- `r_target = 0.5`
+
+### Interpretation
+
+This final run shows that the commons environment can be stabilized, but only after modifying both the policy and the agent response. The key lesson is that stability in multi-agent systems depends on co-design: controller strength, environmental dynamics, and agent sensitivity to incentives must all be aligned.
+
+![Figure 3](Figure_3.png)
