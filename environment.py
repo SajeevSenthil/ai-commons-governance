@@ -58,12 +58,15 @@ class CommonsSim:
             r_high = self.high * (1.0 - tax)
 
             score_low = r_low
+            # Greed still matters, but only mildly in the stabilized setup.
             score_high = r_high * (1.0 + 0.3 * g)
 
+            # Higher temperature smooths the low/high harvest split.
             temp = 0.6
             e_high = np.exp(score_high / temp)
             e_low = np.exp(score_low / temp)
             p_high = float(e_high / (e_high + e_low))
+            # Cap extreme behavior so agents do not all rush to high harvest.
             p_high = min(p_high, 0.8)
 
             if self.rng.random() < p_high:
@@ -81,10 +84,12 @@ class CommonsSim:
 
         collapsed = h0 < self.cut
         if collapsed:
+            # Smooth penalty is easier to recover from than a hard reward halving.
             penalty = 0.5 + 0.5 * h0
             rewards = rewards * penalty
 
         avg_harvest = float(np.mean(harvests))
+        # Recovery depends on current health, while damage grows linearly with harvest.
         delta_h = self.a * (1.0 - avg_harvest) * self.field_health - self.b * avg_harvest
         self.field_health += delta_h
         self.field_health = float(np.clip(self.field_health, 0.0, 1.0))

@@ -24,7 +24,9 @@ def clamp(x: float) -> float:
 
 class RuleBasedPolicy:
     def __init__(self) -> None:
+        # Preventive baseline tax keeps early overharvesting under control.
         self.base = 0.7
+        # Health is the main objective, so it gets the strongest weight.
         self.k1 = 2.5
         self.k2 = 1.2
         self.k3 = 0.2
@@ -49,10 +51,12 @@ class RuleBasedPolicy:
 
         if self.prev_h is not None:
             delta_h = h - self.prev_h
+            # Falling health should trigger a faster tax increase.
             tax += -1.0 * delta_h
 
         self.prev_h = h
 
+        # Keep tax floors high in the safe region so the controller acts early.
         if h > 0.85:
             tax = max(tax, 0.7)
         elif h > 0.7:
@@ -60,6 +64,7 @@ class RuleBasedPolicy:
         elif h > 0.55:
             tax = max(tax, 0.75)
 
+        # Smooth tax updates so the controller does not oscillate too sharply.
         tax = 0.7 * tax + 0.3 * self.prev_tax
         tax = max(0.05, min(1.0, tax))
         self.prev_tax = tax
@@ -192,14 +197,17 @@ class LLMPolicy:
         else:
             llm_tax = 0.5
 
+        # Blend the fresh LLM output with the previous tax to reduce jitter.
         tax = 0.7 * llm_tax + 0.3 * self.prev_tax
         tax = max(tax, 0.65)
 
         if self.prev_h is not None:
             delta_h = h - self.prev_h
+            # Extra bump when health is clearly trending down.
             if delta_h < -0.02:
                 tax += 0.1
 
+        # Guardrails stop obviously dangerous low-tax decisions.
         if h > 0.85:
             tax = max(tax, 0.7)
         elif h < 0.3:
