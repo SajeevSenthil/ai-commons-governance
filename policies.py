@@ -71,7 +71,47 @@ class LLMPolicy:
         self.output_tokens = 0
         self.total_cost_usd = 0.0
 
+    def get_signals(self, obs: dict) -> dict:
+        prev_health = self.history[-1]["health"] if self.history else obs["field_health"]
+        delta_health = obs["field_health"] - prev_health
+
+        if delta_health > 0:
+            trend_direction = "increasing"
+        elif delta_health < 0:
+            trend_direction = "decreasing"
+        else:
+            trend_direction = "stable"
+
+        if obs["avg_harvest"] > 0.7:
+            harvest_signal = "high"
+        elif obs["avg_harvest"] < 0.3:
+            harvest_signal = "low"
+        else:
+            harvest_signal = "moderate"
+
+        if obs["avg_reward"] < 0.3:
+            reward_signal = "low"
+        elif obs["avg_reward"] > 0.6:
+            reward_signal = "high"
+        else:
+            reward_signal = "moderate"
+
+        if obs["field_health"] < 0.4:
+            risk_signal = "HIGH"
+        else:
+            risk_signal = "LOW"
+
+        return {
+            "delta_health": delta_health,
+            "trend_direction": trend_direction,
+            "harvest_signal": harvest_signal,
+            "reward_signal": reward_signal,
+            "risk_signal": risk_signal,
+        }
+
     def build_prompt(self, obs: dict) -> str:
+        sig = self.get_signals(obs)
+
         lines = [
             "You are a policymaker managing a shared resource (apple field).",
             "",
@@ -81,6 +121,12 @@ class LLMPolicy:
             f"Field health: {obs['field_health']:.2f}",
             f"Average harvest: {obs['avg_harvest']:.2f}",
             f"Average reward: {obs['avg_reward']:.2f}",
+            "",
+            "Trend Signals:",
+            f"- Field health change: {sig['delta_health']:.2f} ({sig['trend_direction']})",
+            f"- Harvest pressure: {sig['harvest_signal']}",
+            f"- Reward level: {sig['reward_signal']}",
+            f"- System risk: {sig['risk_signal']}",
             "",
             "Recent History:",
         ]
@@ -96,14 +142,15 @@ class LLMPolicy:
         lines += [
             "",
             "Important rules:",
-            "- If field health drops too low, the system collapses and rewards are reduced.",
-            "- High tax discourages harvesting but protects the field.",
-            "- Low tax encourages harvesting but risks overuse.",
+            "- If field health drops below 0.3, rewards are halved.",
+            "- High harvesting damages the field.",
+            "- High tax reduces harvesting but may reduce rewards.",
+            "- Early intervention is critical to avoid collapse.",
             "",
-            "What tax rate (between 0 and 1) should be set for the next round?",
+            "Step 1: Briefly analyze the situation (1 line).",
+            "Step 2: Choose the next tax rate.",
             "",
-            "Return ONLY a number between 0 and 1.",
-            "Do not explain.",
+            "Return ONLY the final number between 0 and 1.",
         ]
 
         return "\n".join(lines)
